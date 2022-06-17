@@ -1,6 +1,7 @@
 package com.paulocoutinho.sharestory
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,11 +31,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.*
-import okio.BufferedSink
-import okio.buffer
-import okio.sink
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : ComponentActivity(), CoroutineScope {
     override val coroutineContext = Dispatchers.Main
@@ -47,65 +47,25 @@ class MainActivity : ComponentActivity(), CoroutineScope {
     }
 
     fun doShareVideo() {
-        TODO("Not yet implemented")
-    }
-
-    fun doShareImage() {
-        TODO("Not yet implemented")
-    }
-
-    fun doShareColor() {
         // show loading
-        DynamicToast.makeWarning(this, "Loading, wait...").show();
+        showWarning("Loading, wait...")
 
-        // do request
-        val request: Request = Request.Builder().url("https://picsum.photos/200/300").build()
-        OkHttpClient().newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: okio.IOException) {
-                // show error on download
-                DynamicToast.makeError(this@MainActivity, e.toString()).show()
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                launch(Dispatchers.IO) {
-                    // save image locally to send by intent
-                    val folder = filesDir
-
-                    if (!folder.exists()) {
-                        folder.mkdir()
-                    }
-
-                    val assetFile = File(folder.path.toString() + "/image.jpg")
-
-                    if (assetFile.exists()) {
-                        assetFile.delete()
-                    }
-
-                    assetFile.createNewFile()
-
-                    val sink: BufferedSink = assetFile.sink().buffer()
-
-                    response.body?.let {
-                        sink.writeAll(it.source())
-                    }
-
-                    sink.close()
-
+        // save asset image
+        launch(Dispatchers.IO) {
+            if (saveImageAsset()) {
+                if (saveBackgroundVideoAsset()) {
                     withContext(Dispatchers.Main) {
                         // show posting
-                        DynamicToast
-                            .makeWarning(this@MainActivity, "Done, now i'm posting...")
-                            .show()
+                        showWarning("Done, now i'm posting...")
 
                         // create intent
-                        val providerAssetUri = FileProvider.getUriForFile(
-                            this@MainActivity,
-                            "com.paulocoutinho.fileprovider",
-                            assetFile
+                        val providerAssetUri = getProviderFileUri(getImageAssetFile())
+                        val providerBackgroundAssetUri = getProviderFileUri(
+                            getBackgroundVideoAssetFile()
                         )
 
                         val shareIntent = Intent("com.facebook.stories.ADD_TO_STORY").apply {
-                            type = "image/*"
+                            setDataAndType(providerBackgroundAssetUri, "video/*")
                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                             putExtra("source_application", packageName)
                             putExtra(
@@ -113,34 +73,296 @@ class MainActivity : ComponentActivity(), CoroutineScope {
                                 "293441040780773"
                             )
                             putExtra("interactive_asset_uri", providerAssetUri)
-                            putExtra("top_background_color", "#FF0000")
-                            putExtra("bottom_background_color", "#0000FF")
                         }
 
-                        // grant permission to downloaded file
-                        grantUriPermission(
-                            "com.facebook.katana",
-                            providerAssetUri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
+                        // grant permission to downloaded files
+                        grantPermission(providerAssetUri)
+                        grantPermission(providerBackgroundAssetUri)
 
                         // open intent
-                        if (packageManager?.resolveActivity(shareIntent, 0) != null) {
-                            startActivityForResult(shareIntent, 0)
-
-                            // show success
-                            DynamicToast.makeSuccess(this@MainActivity, "Done!").show()
-                        } else {
-                            // show error
-                            DynamicToast.makeError(
-                                this@MainActivity,
-                                "Cannot start activity with the required intent!"
-                            ).show()
-                        }
+                        openIntent(shareIntent)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        showError("Error: Background video asset cannot be download")
                     }
                 }
+            } else {
+                withContext(Dispatchers.Main) {
+                    showError("Error: Image asset cannot be download")
+                }
             }
-        })
+        }
+    }
+
+    fun doShareImage() {
+        // show loading
+        showWarning("Loading, wait...")
+
+        // save asset image
+        launch(Dispatchers.IO) {
+            if (saveImageAsset()) {
+                if (saveBackgroundImageAsset()) {
+                    withContext(Dispatchers.Main) {
+                        // show posting
+                        showWarning("Done, now i'm posting...")
+
+                        // create intent
+                        val providerAssetUri = getProviderFileUri(getImageAssetFile())
+                        val providerBackgroundAssetUri = getProviderFileUri(
+                            getBackgroundImageAssetFile()
+                        )
+
+                        val shareIntent = Intent("com.facebook.stories.ADD_TO_STORY").apply {
+                            setDataAndType(providerBackgroundAssetUri, "image/*")
+                            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            putExtra("source_application", packageName)
+                            putExtra(
+                                "com.facebook.platform.extra.APPLICATION_ID",
+                                "293441040780773"
+                            )
+                            putExtra("interactive_asset_uri", providerAssetUri)
+                        }
+
+                        // grant permission to downloaded files
+                        grantPermission(providerAssetUri)
+                        grantPermission(providerBackgroundAssetUri)
+
+                        // open intent
+                        openIntent(shareIntent)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        showError("Error: Background image asset cannot be download")
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    showError("Error: Image asset cannot be download")
+                }
+            }
+        }
+    }
+
+    fun doShareColor() {
+        // show loading
+        showWarning("Loading, wait...")
+
+        // save asset image
+        launch(Dispatchers.IO) {
+            if (saveImageAsset()) {
+                withContext(Dispatchers.Main) {
+                    // show posting
+                    showWarning("Done, now i'm posting...")
+
+                    // create intent
+                    val providerAssetUri = getProviderFileUri(getImageAssetFile())
+
+                    val shareIntent = Intent("com.facebook.stories.ADD_TO_STORY").apply {
+                        type = "image/*"
+                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        putExtra("source_application", packageName)
+                        putExtra(
+                            "com.facebook.platform.extra.APPLICATION_ID",
+                            "293441040780773"
+                        )
+                        putExtra("interactive_asset_uri", providerAssetUri)
+                        putExtra("top_background_color", "#FF0000")
+                        putExtra("bottom_background_color", "#0000FF")
+                    }
+
+                    // grant permission to downloaded file
+                    grantPermission(providerAssetUri)
+
+                    // open intent
+                    openIntent(shareIntent)
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    showError("Error: Image asset cannot be download")
+                }
+            }
+        }
+    }
+
+    private fun getProviderFileUri(file: File): Uri? {
+        return FileProvider.getUriForFile(
+            this,
+            "com.paulocoutinho.fileprovider",
+            file
+        )
+    }
+
+    private fun grantPermission(uri: Uri?) {
+        uri?.let {
+            grantUriPermission(
+                "com.facebook.katana", uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+    }
+
+    private fun openIntent(shareIntent: Intent) {
+        if (packageManager?.resolveActivity(shareIntent, 0) != null) {
+            startActivityForResult(shareIntent, 0)
+            showSuccess("Done!")
+        } else {
+            showError("Cannot start activity with the required intent!")
+        }
+    }
+
+    private fun saveImageAsset(): Boolean {
+        val request = Request.Builder().url("https://picsum.photos/200/300").build()
+        val client = OkHttpClient.Builder().build()
+        val response = client.newCall(request).execute()
+
+        if (response.isSuccessful) {
+            val folder = filesDir
+
+            if (!folder.exists()) {
+                folder.mkdir()
+            }
+
+            val file = getImageAssetFile()
+
+            if (file.exists()) {
+                file.delete()
+            }
+
+            val body = response.body
+
+            body?.let {
+                val inputStream = body.byteStream()
+                val fos = FileOutputStream(file)
+                val buffer = ByteArray(4096)
+                var len: Int
+
+                while (inputStream.read(buffer).also { len = it } != -1) {
+                    fos.write(buffer, 0, len)
+                }
+
+                fos.flush()
+                fos.close()
+
+                return true
+            }
+
+            return false
+        }
+
+        return false
+    }
+
+    private fun saveBackgroundImageAsset(): Boolean {
+        val request = Request.Builder().url("https://picsum.photos/720/1280").build()
+        val client = OkHttpClient.Builder().build()
+        val response = client.newCall(request).execute()
+
+        if (response.isSuccessful) {
+            val folder = filesDir
+
+            if (!folder.exists()) {
+                folder.mkdir()
+            }
+
+            val file = getBackgroundImageAssetFile()
+
+            if (file.exists()) {
+                file.delete()
+            }
+
+            val body = response.body
+
+            body?.let {
+                val inputStream = body.byteStream()
+                val fos = FileOutputStream(file)
+                val buffer = ByteArray(4096)
+                var len: Int
+
+                while (inputStream.read(buffer).also { len = it } != -1) {
+                    fos.write(buffer, 0, len)
+                }
+
+                fos.flush()
+                fos.close()
+
+                return true
+            }
+
+            return false
+        }
+
+        return false
+    }
+
+    private fun saveBackgroundVideoAsset(): Boolean {
+        val request = Request.Builder()
+            .url("https://file-examples.com/storage/fef7733c1a62acab1935fbf/2017/04/file_example_MP4_480_1_5MG.mp4")
+            .build()
+        val client = OkHttpClient.Builder().build()
+        val response = client.newCall(request).execute()
+
+        if (response.isSuccessful) {
+            val folder = filesDir
+
+            if (!folder.exists()) {
+                folder.mkdir()
+            }
+
+            val file = getBackgroundVideoAssetFile()
+
+            if (file.exists()) {
+                file.delete()
+            }
+
+            val body = response.body
+
+            body?.let {
+                val inputStream = body.byteStream()
+                val fos = FileOutputStream(file)
+                val buffer = ByteArray(4096)
+                var len: Int
+
+                while (inputStream.read(buffer).also { len = it } != -1) {
+                    fos.write(buffer, 0, len)
+                }
+
+                fos.flush()
+                fos.close()
+
+                return true
+            }
+
+            return false
+        }
+
+        return false
+    }
+
+    private fun getImageAssetFile(): File {
+        val folder = filesDir
+        return File(folder.path.toString() + "/asset-image.jpg")
+    }
+
+    private fun getBackgroundImageAssetFile(): File {
+        val folder = filesDir
+        return File(folder.path.toString() + "/bg-asset-image.jpg")
+    }
+
+    private fun getBackgroundVideoAssetFile(): File {
+        val folder = filesDir
+        return File(folder.path.toString() + "/bg-asset-video.mp4")
+    }
+
+    private fun showSuccess(msg: String) {
+        DynamicToast.makeSuccess(this, msg).show()
+    }
+
+    private fun showWarning(msg: String) {
+        DynamicToast.makeWarning(this, msg).show()
+    }
+
+    private fun showError(msg: String) {
+        DynamicToast.makeError(this, msg).show()
     }
 
 }
