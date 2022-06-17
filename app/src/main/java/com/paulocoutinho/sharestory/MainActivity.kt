@@ -1,7 +1,6 @@
 package com.paulocoutinho.sharestory
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +22,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.paulocoutinho.sharestory.ui.theme.ShareStoryTheme
 import com.pranavpandey.android.dynamic.toasts.DynamicToast
@@ -75,15 +75,15 @@ class MainActivity : ComponentActivity(), CoroutineScope {
                         folder.mkdir()
                     }
 
-                    val file = File(folder.path.toString() + "/image.jpg")
+                    val assetFile = File(folder.path.toString() + "/image.jpg")
 
-                    if (file.exists()) {
-                        file.delete()
+                    if (assetFile.exists()) {
+                        assetFile.delete()
                     }
 
-                    file.createNewFile()
+                    assetFile.createNewFile()
 
-                    val sink: BufferedSink = file.sink().buffer()
+                    val sink: BufferedSink = assetFile.sink().buffer()
 
                     response.body?.let {
                         sink.writeAll(it.source())
@@ -98,15 +98,21 @@ class MainActivity : ComponentActivity(), CoroutineScope {
                             .show()
 
                         // create intent
+                        val providerAssetUri = FileProvider.getUriForFile(
+                            this@MainActivity,
+                            "com.paulocoutinho.fileprovider",
+                            assetFile
+                        )
+
                         val shareIntent = Intent("com.facebook.stories.ADD_TO_STORY").apply {
-                            type = "image/jpeg"
+                            type = "image/*"
                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                             putExtra("source_application", packageName)
                             putExtra(
                                 "com.facebook.platform.extra.APPLICATION_ID",
                                 "293441040780773"
                             )
-                            putExtra("interactive_asset_uri", Uri.parse(file.absolutePath))
+                            putExtra("interactive_asset_uri", providerAssetUri)
                             putExtra("top_background_color", "#FF0000")
                             putExtra("bottom_background_color", "#0000FF")
                         }
@@ -114,7 +120,7 @@ class MainActivity : ComponentActivity(), CoroutineScope {
                         // grant permission to downloaded file
                         grantUriPermission(
                             "com.facebook.katana",
-                            Uri.parse(file.absolutePath),
+                            providerAssetUri,
                             Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
 
@@ -125,6 +131,7 @@ class MainActivity : ComponentActivity(), CoroutineScope {
                             // show success
                             DynamicToast.makeSuccess(this@MainActivity, "Done!").show()
                         } else {
+                            // show error
                             DynamicToast.makeError(
                                 this@MainActivity,
                                 "Cannot start activity with the required intent!"
