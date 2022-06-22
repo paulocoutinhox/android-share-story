@@ -1,6 +1,8 @@
 package com.paulocoutinho.sharestory
 
+import android.content.Context
 import android.content.Intent
+import android.content.res.AssetManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -35,6 +37,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 
 class MainActivity : ComponentActivity(), CoroutineScope {
     override val coroutineContext = Dispatchers.Main
@@ -295,47 +298,50 @@ class MainActivity : ComponentActivity(), CoroutineScope {
     }
 
     private fun saveBackgroundVideoAsset(): Boolean {
-        val request = Request.Builder()
-            .url("https://file-examples.com/storage/fef7733c1a62acab1935fbf/2017/04/file_example_MP4_480_1_5MG.mp4")
-            .build()
-        val client = OkHttpClient.Builder().build()
-        val response = client.newCall(request).execute()
-
-        if (response.isSuccessful) {
-            val folder = filesDir
-
-            if (!folder.exists()) {
-                folder.mkdir()
-            }
-
-            val file = getBackgroundVideoAssetFile()
-
-            if (file.exists()) {
-                file.delete()
-            }
-
-            val body = response.body
-
-            body?.let {
-                val inputStream = body.byteStream()
-                val fos = FileOutputStream(file)
-                val buffer = ByteArray(4096)
-                var len: Int
-
-                while (inputStream.read(buffer).also { len = it } != -1) {
-                    fos.write(buffer, 0, len)
-                }
-
-                fos.flush()
-                fos.close()
-
-                return true
-            }
-
-            return false
+        try {
+            copyAssetFile(this, "video.mp4", getBackgroundVideoAssetFile().absolutePath)
+            return true
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
 
         return false
+    }
+
+    private fun copyAssetFile(context: Context, sourceFilename: String, targetFilename: String) {
+        val assetManager: AssetManager = context.assets
+
+        try {
+            val inStream = assetManager.open(sourceFilename)
+            val outStream = FileOutputStream(targetFilename)
+
+            try {
+                val buffer = ByteArray(1024)
+                var read: Int
+
+                while (inStream.read(buffer).also { read = it } != -1) {
+                    outStream.write(buffer, 0, read)
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                // failed to copy asset file: $sourceFilename to: $targetFilename
+            } finally {
+                try {
+                    inStream.close()
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                }
+
+                try {
+                    outStream.close()
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // failed to copy asset file: {$e.message}
+        }
     }
 
     private fun getImageAssetFile(): File {
