@@ -214,7 +214,7 @@ class MainActivity : ComponentActivity(), CoroutineScope {
     }
 
     private fun saveImageAsset(): Boolean {
-        val request = Request.Builder().url("https://picsum.photos/200/300").build()
+        val request = Request.Builder().url("https://picsum.photos/100/150").build()
         val client = OkHttpClient.Builder().build()
         val response = client.newCall(request).execute()
 
@@ -437,7 +437,7 @@ private fun ScreenContent() {
 @Composable
 fun ProductCoverImage() {
     val size = 100
-    val url = "https://picsum.photos/200/300"
+    val url = "https://picsum.photos/100/150"
 
     AsyncImage(
         url,
